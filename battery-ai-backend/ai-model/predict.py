@@ -90,29 +90,66 @@
 #         "trace": traceback.format_exc()
 #     }))
 
+
+
 import sys
 import json
 import numpy as np
 import joblib
 import os
 
-try:
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    model_path = os.path.join(BASE_DIR, "models", "model.pkl")
+# 🔥 Reduce logs
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 
-    model = joblib.load(model_path)
+from tensorflow.keras.models import load_model
+
+try:
+    # ================= PATH =================
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+    model_path = os.path.join(BASE_DIR, "models", "lstm_battery_model.h5")
+    scaler_path = os.path.join(BASE_DIR, "models", "scaler.pkl")
+
+    # ================= LOAD =================
+    model = load_model(model_path, compile=False)
+    scaler = joblib.load(scaler_path)
+
+    # ================= INPUT =================
+    if len(sys.argv) < 5:
+        raise Exception("Missing input arguments")
 
     battery = float(sys.argv[1])
     cpu = float(sys.argv[2])
     charging = int(sys.argv[3])
     drain = float(sys.argv[4])
 
-    X = np.array([[battery, cpu, charging, drain]])
+    # ================= PREPARE DATA =================
+    sequence_length = 5
+    sequence = np.array([battery] * sequence_length, dtype=float).reshape(-1, 1)
 
-    prediction = model.predict(X)[0]
+    scaled_seq = scaler.transform(sequence)
+    X = scaled_seq.reshape(1, sequence_length, 1)
 
+    # ================= PREDICT =================
+    pred_scaled = model.predict(X, verbose=0)
+    prediction = scaler.inverse_transform(pred_scaled)[0][0]
+
+    # ================= METRICS =================
+    confidence = float(np.clip(100 - abs(prediction - battery), 80, 99))
+    safe_drain = drain if drain > 0 else 0.1
+    remaining_life = int((prediction - 20) / safe_drain)  # improved logic
+
+    degradation_rate = float(drain)
+    cycle_count = int((100 - battery) * 3)
+
+    # ================= OUTPUT =================
     print(json.dumps({
-        "prediction": round(float(prediction), 2)
+        "prediction": round(float(prediction), 2),
+        "confidence": round(confidence, 2),
+        "remainingLife": f"{remaining_life} Months",
+        "degradationRate": round(degradation_rate, 2),
+        "cycleCount": cycle_count
     }))
 
 except Exception as e:
