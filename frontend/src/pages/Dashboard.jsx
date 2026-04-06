@@ -475,7 +475,7 @@ import BatteryCard from "../components/BatteryCard";
 import PredictionCard from "../components/PredictionCard";
 import { useNavigate } from "react-router-dom";
 
-const socket = io("http://localhost:5000");
+const socket = io("https://battery-ai-backend.onrender.com");
 
 export default function Dashboard() {
   const [history, setHistory] = useState([]);
